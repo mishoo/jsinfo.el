@@ -51,7 +51,11 @@
 (defun jsinfo-places-or-die ()
   (unless *jsinfo-current-places*
     (error "No places highlighted"))
-  *jsinfo-current-places*)
+  (sort (remove-if-not (lambda (ov)
+                         (overlay-get ov 'jsinfo-highlight-symbol))
+                       (overlays-in (point-min) (point-max)))
+        (lambda (a b)
+          (< (overlay-start a) (overlay-start b)))))
 
 (defun %jsinfo-prop (obj names)
   (if names
@@ -162,7 +166,7 @@
   (interactive)
   (catch 'done
     (dolist (i (jsinfo-places-or-die))
-      (let ((x (cdr (assq 'begin i))))
+      (let ((x (overlay-start i)))
         (when (> x (point))
           (goto-char x)
           (throw 'done nil))))))
@@ -171,8 +175,8 @@
   (interactive)
   (catch 'done
     (dolist (i (reverse (jsinfo-places-or-die)))
-      (when (< (cdr (assq 'end i)) (point))
-        (goto-char (cdr (assq 'begin i)))
+      (when (< (overlay-end i) (point))
+        (goto-char (overlay-start i))
         (throw 'done nil)))))
 
 (defun jsinfo-goto-definition (pos)
@@ -228,7 +232,8 @@
     ))
 
 (defun %jsinfo-hl-mode-onchange (begin end)
-  (jsinfo-forgetit))
+  ;; (jsinfo-forgetit)
+  )
 
 (define-minor-mode %jsinfo-hl-mode
   "Internal mode used by `jsinfo-mode'"
@@ -236,9 +241,7 @@
   nil
   `(
     (,(kbd "C-<down>") . jsinfo-goto-next-symbol)
-    (,(kbd "C-<right>") . jsinfo-goto-next-symbol)
     (,(kbd "C-<up>") . jsinfo-goto-prev-symbol)
-    (,(kbd "C-<left>") . jsinfo-goto-prev-symbol)
     (,(kbd "C-<return>") . jsinfo-rename-symbol)
     (,(kbd "ESC") . jsinfo-forgetit)
     (,(kbd "C-g") . jsinfo-forgetit)

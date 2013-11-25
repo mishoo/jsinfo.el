@@ -64,7 +64,7 @@ if (best_node) {
             origin     : make_pos(best_node),
             definition : [],
             references : a.map(make_pos)
-        }
+        };
     }
     else if (best_node instanceof U2.AST_This) {
         var a = [];
@@ -83,11 +83,11 @@ if (best_node) {
         };
     }
     else if (best_node instanceof U2.AST_Symbol) {
-        ast.figure_out_scope();
+        ast.figure_out_scope({ screw_ie8: true });
         result = {
             name       : best_node.name,
             origin     : make_pos(best_node),
-            definition : best_node.definition().orig.map(make_pos),
+            definition : best_node.undeclared() ? [] : best_node.definition().orig.map(make_pos),
             references : best_node.definition().references.map(make_pos)
         };
     }
