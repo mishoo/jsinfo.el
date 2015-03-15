@@ -38,19 +38,14 @@
 
 (add-to-list 'load-path *jsinfo-base-directory*)
 
-(defvar *jsinfo-current-places* nil)
-(defvar *jsinfo-current-origin* nil)
 (defvar *jsinfo-current-info* nil)
 (defvar *jsinfo-extend-region-undo* nil)
+(defvar *jsinfo-location-history* nil)
 
 (make-variable-buffer-local '*jsinfo-current-info*)
-(make-variable-buffer-local '*jsinfo-current-origin*)
-(make-variable-buffer-local '*jsinfo-current-places*)
 (make-variable-buffer-local '*jsinfo-extend-region-undo*)
 
-(defun jsinfo-places-or-die ()
-  (unless *jsinfo-current-places*
-    (error "No places highlighted"))
+(defun jsinfo--get-overlays ()
   (sort (remove-if-not (lambda (ov)
                          (overlay-get ov 'jsinfo-highlight-symbol))
                        (overlays-in (point-min) (point-max)))
@@ -69,37 +64,35 @@
      (%jsinfo-prop *jsinfo-current-info* ',names)))
 
 (defun jsinfo-query (pos)
-  (let* ((output (generate-new-buffer "*jsinfo.js*"))
-         (json (save-restriction
-                 (widen)
-                 (call-process-region (point-min) (point-max)
-                                      *jsinfo-query-script*
-                                      nil (list output nil) nil
-                                      (format "%d" pos)))))
-    (unwind-protect
-        (progn
-          (setq *jsinfo-current-info*
-                (with-current-buffer output
-                  (beginning-of-buffer)
-                  (let ((json-array-type 'list))
-                    (json-read))))
-          (setq *jsinfo-current-origin* (jsinfo-prop origin))
-          (when (jsinfo-prop parse-error)
-            (let ((line (jsinfo-prop parse-error line))
-                  (col (jsinfo-prop parse-error col))
-                  (pos (jsinfo-prop parse-error pos))
-                  (message (jsinfo-prop parse-error message)))
-              (push-mark (point))
-              (goto-char pos)
-              (message "Parse error [%d,%d]: %s" line col message))))
-      (kill-buffer output))))
+  (let ((output (get-buffer-create "*jsinfo.js*")))
+    (with-current-buffer output (erase-buffer))
+    (let ((json (save-restriction
+                  (widen)
+                  (call-process-region (point-min) (point-max)
+                                       *jsinfo-query-script*
+                                       nil (list output nil) nil
+                                       (format "%d" pos)))))
+      (unwind-protect
+          (progn
+            (setq *jsinfo-current-info*
+                  (with-current-buffer output
+                    (beginning-of-buffer)
+                    (let ((json-array-type 'list))
+                      (json-read))))
+            (when (jsinfo-prop parse-error)
+              (let ((line (jsinfo-prop parse-error line))
+                    (col (jsinfo-prop parse-error col))
+                    (pos (jsinfo-prop parse-error pos))
+                    (message (jsinfo-prop parse-error message)))
+                (push-mark (point))
+                (goto-char pos)
+                (message "Parse error [%d,%d]: %s" line col message))))
+        (kill-buffer output)))))
 
 (defun jsinfo-forgetit ()
   (interactive)
   (remove-overlays (point-min) (point-max) 'jsinfo-highlight-symbol t)
   (setq *jsinfo-current-info* nil
-        *jsinfo-current-places* nil
-        *jsinfo-current-origin* nil
         *jsinfo-extend-region-undo* nil)
   (%jsinfo-hl-mode 0))
 
@@ -146,6 +139,8 @@
 
 (defun jsinfo-rename-symbol (pos new-name)
   (interactive "d\nsNew name: ")
+  (jsinfo-forgetit)
+  (jsinfo-query pos)
   (let ((places (sort (copy-list (append (jsinfo-prop references)
                                          (jsinfo-prop definition)))
                       (lambda (a b)
@@ -155,7 +150,6 @@
       (dolist (p places)
         (let ((begin (cdr (assq 'begin p)))
               (end (cdr (assq 'end p))))
-          (message "Changing %d-%d" begin end)
           (delete-region begin end)
           (goto-char begin)
           (insert new-name)))
@@ -165,7 +159,7 @@
 (defun jsinfo-goto-next-symbol ()
   (interactive)
   (catch 'done
-    (dolist (i (jsinfo-places-or-die))
+    (dolist (i (jsinfo--get-overlays))
       (let ((x (overlay-start i)))
         (when (> x (point))
           (goto-char x)
@@ -174,44 +168,74 @@
 (defun jsinfo-goto-prev-symbol ()
   (interactive)
   (catch 'done
-    (dolist (i (reverse (jsinfo-places-or-die)))
+    (dolist (i (reverse (jsinfo--get-overlays)))
       (when (< (overlay-end i) (point))
         (goto-char (overlay-start i))
         (throw 'done nil)))))
 
 (defun jsinfo-goto-definition (pos)
   (interactive "d")
-  (unless *jsinfo-current-origin*
-    (jsinfo-highlight-symbol pos))
+  (jsinfo-query pos)
   (let* ((defs (jsinfo-prop definition))
          (def (car defs))
          (begin (cdr (assq 'begin def)))
          (end (cdr (assq 'end def))))
     (if begin
-        (goto-char begin)
+        (progn
+          (push pos *jsinfo-location-history*)
+          (goto-char begin))
       (message "Definition not found"))))
 
-(defun jsinfo-highlight-symbol (pos)
-  (interactive "d")
-  (jsinfo-forgetit)
-  (jsinfo-query pos)
-  (setq *jsinfo-current-places*
-        (sort (copy-list (append (jsinfo-prop references)
-                                 (jsinfo-prop definition)))
-              (lambda (a b)
-                (< (cdr (assq 'begin a))
-                   (cdr (assq 'begin b))))))
-  (let* ((places *jsinfo-current-places*))
-    (when places
-      (loop for ref in places
+(defun jsinfo-undo-goto-definition ()
+  (interactive)
+  (let ((loc (pop *jsinfo-location-history*)))
+    (when loc
+      (goto-char loc))))
+
+(defun jsinfo--highlight-things (things)
+  (let ((things (sort things
+                      (lambda (a b)
+                        (< (cdr (assq 'begin a))
+                           (cdr (assq 'begin b)))))))
+    (cond 
+     (things
+      (loop for ref in things
             for beg = (cdr (assq 'begin ref))
             for end = (cdr (assq 'end ref))
             do (let ((ovl (make-overlay beg end)))
                  (overlay-put ovl 'face 'highlight)
                  (overlay-put ovl 'evaporate t)
                  (overlay-put ovl 'jsinfo-highlight-symbol t)))
-      (message "%d occurrences found" (length places))
-      (%jsinfo-hl-mode 1))))
+      (message "%d places highlighted" (length things))
+      (%jsinfo-hl-mode 1))
+     (t
+      (message "No places found")))))
+
+(defun jsinfo-highlight-symbol (pos)
+  (interactive "d")
+  (jsinfo-forgetit)
+  (jsinfo-query pos)
+  (jsinfo--highlight-things
+   (copy-list (append (jsinfo-prop references)
+                      (jsinfo-prop definition)))))
+
+(defun jsinfo-highlight-free-vars (pos)
+  (interactive "d")
+  (jsinfo-forgetit)
+  (jsinfo-query pos)
+  (jsinfo--highlight-things (jsinfo-prop free_vars)))
+
+(defun jsinfo-highlight-local-vars (pos)
+  (interactive "d")
+  (jsinfo-forgetit)
+  (jsinfo-query pos)
+  (jsinfo--highlight-things (jsinfo-prop local_vars)))
+
+(defun jsinfo-highlight-return-points (pos)
+  (interactive "d")
+  (jsinfo-forgetit)
+  (jsinfo-query pos)
+  (jsinfo--highlight-things (jsinfo-prop returns)))
 
 (define-minor-mode jsinfo-mode
   "Enables some JS editing goodies via an external tool based on UglifyJS"
@@ -223,6 +247,12 @@
   `(
     (,(kbd "M-?") . jsinfo-highlight-symbol)
     (,(kbd "M-.") . jsinfo-goto-definition)
+    (,(kbd "M-,") . jsinfo-undo-goto-definition)
+    (,(kbd "C-c f") . jsinfo-highlight-free-vars)
+    (,(kbd "C-c C-f") . jsinfo-highlight-free-vars)
+    (,(kbd "C-c v") . jsinfo-highlight-local-vars)
+    (,(kbd "C-c C-v") . jsinfo-highlight-local-vars)
+    (,(kbd "C-c r") . jsinfo-highlight-return-points)
     (,(kbd "C-c <left>") . jsinfo-extend-region-node)
     (,(kbd "C-c C-<left>") . jsinfo-extend-region-node)
     (,(kbd "C-c <up>") . jsinfo-extend-region-statement)

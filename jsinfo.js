@@ -28,14 +28,23 @@ try {
 var best_node = null;
 var path = [];
 var stat = [];
-var the_func = null;
+var the_func = ast;
+var free_vars = [];
+var local_vars = [];
+var returns = [];
 var OUT = {};
 try {
+    ast.figure_out_scope({ screw_ie8: true });
     ast.walk(new U2.TreeWalker(function (node, descend){
-        if (node instanceof U2.AST_Lambda)
-            the_func = node;
         if (node.start.pos > POS)
             throw OUT;
+        if (node instanceof U2.AST_Lambda) {
+            var save_func = the_func;
+            the_func = node;
+            descend();
+            the_func = save_func;
+            return true;
+        }
         if (node.start.pos <= POS && node.end.endpos >= POS) {
             best_node = node;
             path.push(node);
@@ -68,7 +77,7 @@ if (best_node) {
     }
     else if (best_node instanceof U2.AST_This) {
         var a = [];
-        var top = (the_func || ast);
+        var top = the_func;
         top.walk(new U2.TreeWalker(function(node, descend){
             if (node instanceof U2.AST_This)
                 a.push(node);
@@ -83,7 +92,6 @@ if (best_node) {
         };
     }
     else if (best_node instanceof U2.AST_Symbol) {
-        ast.figure_out_scope({ screw_ie8: true });
         result = {
             name       : best_node.name,
             origin     : make_pos(best_node),
@@ -96,11 +104,48 @@ if (best_node) {
             origin: make_pos(best_node)
         };
     }
+    var func_nest = 0;
+    the_func.walk(new U2.TreeWalker(function(node, descend){
+        if (node instanceof U2.AST_Lambda && node !== the_func) {
+            func_nest++;
+            descend();
+            func_nest--;
+            return true;
+        }
+        if (node instanceof U2.AST_Return && func_nest == 0) {
+            returns.push(node);
+        }
+        if (node instanceof U2.AST_SymbolRef) {
+            var def = node.definition();
+            if (!def) {
+                free_vars.push(node);
+            } else {
+                var scope = def.scope;
+                while (scope) {
+                    if (scope === the_func)
+                        break;
+                    scope = scope.parent_scope;
+                }
+                if (!scope) {
+                    free_vars.push(node);
+                }
+            }
+        }
+    }));
+    the_func.variables.each(function(def){
+        def.orig.forEach(function(node){
+            local_vars.push(node);
+        });
+    });
 }
 
 if (result) {
     result.path = path.map(make_pos);
     result.stat = stat.map(make_pos);
+    result.free_vars = free_vars.map(make_pos);
+    result.the_func = make_pos(the_func);
+    result.local_vars = local_vars.map(make_pos);
+    result.returns = returns.map(make_pos);
 }
 
 SYS.puts(JSON.stringify(result));
