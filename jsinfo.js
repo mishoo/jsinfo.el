@@ -38,13 +38,6 @@ try {
     ast.walk(new U2.TreeWalker(function (node, descend){
         if (node.start.pos > POS)
             throw OUT;
-        if (node instanceof U2.AST_Lambda) {
-            var save_func = the_func;
-            the_func = node;
-            descend();
-            the_func = save_func;
-            return true;
-        }
         if (node.start.pos <= POS && node.end.endpos >= POS) {
             best_node = node;
             path.push(node);
@@ -52,6 +45,13 @@ try {
                 !(node instanceof U2.AST_Function)) {
                 stat.push(node);
             }
+        }
+        if (node instanceof U2.AST_Lambda) {
+            var save_func = the_func;
+            the_func = node;
+            descend();
+            the_func = save_func;
+            return true;
         }
     }));
 } catch(ex) {
