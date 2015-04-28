@@ -197,7 +197,7 @@
                       (lambda (a b)
                         (< (cdr (assq 'begin a))
                            (cdr (assq 'begin b)))))))
-    (cond 
+    (cond
      (things
       (loop for ref in things
             for beg = (cdr (assq 'begin ref))
@@ -273,6 +273,7 @@
     (,(kbd "C-<down>") . jsinfo-goto-next-symbol)
     (,(kbd "C-<up>") . jsinfo-goto-prev-symbol)
     (,(kbd "C-<return>") . jsinfo-rename-symbol)
+    (,(kbd "<escape>") . jsinfo-forgetit)
     (,(kbd "C-g") . jsinfo-forgetit)
     )
 
