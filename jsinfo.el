@@ -242,7 +242,7 @@
   ;; initially disabled
   nil
   ;; modeline
-  " JSinfo"
+  nil
   ;; keymap
   `(
     (,(kbd "M-?") . jsinfo-highlight-symbol)
@@ -268,12 +268,11 @@
 (define-minor-mode %jsinfo-hl-mode
   "Internal mode used by `jsinfo-mode'"
   nil
-  nil
+  "/•"
   `(
     (,(kbd "C-<down>") . jsinfo-goto-next-symbol)
     (,(kbd "C-<up>") . jsinfo-goto-prev-symbol)
     (,(kbd "C-<return>") . jsinfo-rename-symbol)
-    (,(kbd "ESC") . jsinfo-forgetit)
     (,(kbd "C-g") . jsinfo-forgetit)
     )
 
