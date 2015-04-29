@@ -64,7 +64,8 @@
      (%jsinfo-prop *jsinfo-current-info* ',names)))
 
 (defun jsinfo-query (pos)
-  (let ((output (get-buffer-create "*jsinfo.js*")))
+  (let ((output (get-buffer-create "*jsinfo.js*"))
+        deactivate-mark)
     (with-current-buffer output (erase-buffer))
     (let ((json (save-restriction
                   (widen)
@@ -113,7 +114,7 @@
     (setq begin (point)
           end begin))
   (push (cons begin end) *jsinfo-extend-region-undo*)
-  (unless *jsinfo-current-info*
+  (unless (string-match "^jsinfo-extend-" (symbol-name last-command))
     (jsinfo-query begin))
   (let ((path (%jsinfo-prop *jsinfo-current-info* prop)))
     (when path
@@ -126,7 +127,7 @@
                       (> y end))
               (goto-char x)
               (push-mark y t t)
-              (message "Node: %s" (cdr (assq 'type i)) x y)
+              (message "Node: %s (%d-%d)" (cdr (assq 'type i)) x y)
               (throw 'done nil))))))))
 
 (defun jsinfo-extend-region-node (begin end)
