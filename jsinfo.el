@@ -254,6 +254,7 @@
     (,(kbd "C-c v") . jsinfo-highlight-local-vars)
     (,(kbd "C-c C-v") . jsinfo-highlight-local-vars)
     (,(kbd "C-c r") . jsinfo-highlight-return-points)
+    (,(kbd "C-c C-r") . jsinfo-highlight-return-points)
     (,(kbd "C-c <left>") . jsinfo-extend-region-node)
     (,(kbd "C-c C-<left>") . jsinfo-extend-region-node)
     (,(kbd "C-c <up>") . jsinfo-extend-region-statement)
