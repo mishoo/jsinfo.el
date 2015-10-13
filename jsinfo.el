@@ -63,16 +63,18 @@
        (error "No places highlighted"))
      (%jsinfo-prop *jsinfo-current-info* ',names)))
 
-(defun jsinfo-query (pos)
+(defun jsinfo-query (pos &rest args)
   (let ((output (get-buffer-create "*jsinfo.js*"))
         deactivate-mark)
     (with-current-buffer output (erase-buffer))
-    (let ((json (save-restriction
-                  (widen)
-                  (call-process-region (point-min) (point-max)
-                                       *jsinfo-query-script*
-                                       nil (list output nil) nil
-                                       (format "%d" pos)))))
+    (let* ((json (save-restriction
+                   (widen)
+                   (apply #'call-process-region
+                          (point-min) (point-max)
+                          *jsinfo-query-script*
+                          nil (list output nil) nil
+                          (format "%d" pos)
+                          args))))
       (unwind-protect
           (progn
             (setq *jsinfo-current-info*
@@ -193,8 +195,9 @@
     (when loc
       (goto-char loc))))
 
-(defun jsinfo--highlight-things (things)
-  (let ((things (sort things
+(defun jsinfo--highlight-things (things &rest options)
+  (let ((line-only (plist-get options :line-only))
+        (things (sort things
                       (lambda (a b)
                         (< (cdr (assq 'begin a))
                            (cdr (assq 'begin b)))))))
@@ -202,7 +205,12 @@
      (things
       (loop for ref in things
             for beg = (cdr (assq 'begin ref))
-            for end = (cdr (assq 'end ref))
+            for end = (if line-only
+                          (save-excursion
+                            (goto-char beg)
+                            (end-of-line)
+                            (point))
+                        (cdr (assq 'end ref)))
             do (let ((ovl (make-overlay beg end)))
                  (overlay-put ovl 'face 'highlight)
                  (overlay-put ovl 'evaporate t)
@@ -237,6 +245,13 @@
   (jsinfo-forgetit)
   (jsinfo-query pos)
   (jsinfo--highlight-things (jsinfo-prop returns)))
+
+(defun jsinfo-highlight-ast-nodes (pos node-type)
+  (interactive "d
+MSearch for node: ")
+  (jsinfo-forgetit)
+  (jsinfo-query pos node-type)
+  (jsinfo--highlight-things (jsinfo-prop search) :line-only t))
 
 (define-minor-mode jsinfo-mode
   "Enables some JS editing goodies via an external tool based on UglifyJS"

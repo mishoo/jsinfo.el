@@ -6,7 +6,8 @@ var SYS = require("util")
 
 var ARGS = process.argv.splice(2);
 var POS = parseInt(ARGS[0], 10) - 1;
-var FILE = ARGS[1] || "/dev/stdin";
+var FILE = "/dev/stdin";
+var SEARCH = ARGS[1];
 
 var code = FS.readFileSync(FILE, "utf8").replace(/^#!/, "//"), ast;
 try {
@@ -32,6 +33,7 @@ var the_func = ast;
 var free_vars = [];
 var local_vars = [];
 var returns = [];
+var search = [];
 var OUT = {};
 try {
     ast.figure_out_scope({ screw_ie8: true });
@@ -107,10 +109,16 @@ if (best_node) {
     var func_nest = 0;
     the_func.walk(new U2.TreeWalker(function(node, descend){
         if (node instanceof U2.AST_Lambda && node !== the_func) {
+            if (SEARCH && node.TYPE == SEARCH) {
+                search.push(node);
+            }
             func_nest++;
             descend();
             func_nest--;
             return true;
+        }
+        if (SEARCH && node.TYPE == SEARCH) {
+            search.push(node);
         }
         if (node instanceof U2.AST_Return && func_nest == 0) {
             returns.push(node);
@@ -146,10 +154,12 @@ if (result) {
     result.the_func = make_pos(the_func);
     result.local_vars = local_vars.map(make_pos);
     result.returns = returns.map(make_pos);
+    result.search = search.map(make_pos);
 }
 
 SYS.puts(JSON.stringify(result));
 
+// FS.writeFileSync("/tmp/jsinfo.json", SEARCH + "\n\n" + JSON.stringify(result, null, 2), "utf8");
 
 
 function make_pos(node) {
