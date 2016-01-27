@@ -2,19 +2,22 @@
 
 var FS = require("fs");
 var U2 = require("uglify-js");
-var SYS = require("util")
 
 var ARGS = process.argv.splice(2);
 var POS = parseInt(ARGS[0], 10) - 1;
 var FILE = "/dev/stdin";
 var SEARCH = ARGS[1];
 
+function print(txt) {
+    console.log("%s", txt);
+}
+
 var code = FS.readFileSync(FILE, "utf8").replace(/^#!/, "//"), ast;
 try {
     ast = U2.parse(code, { filename: FILE });
 } catch(ex) {
     if (ex instanceof U2.JS_Parse_Error) {
-        SYS.puts(JSON.stringify({
+        print(JSON.stringify({
             "parse-error": {
                 message : ex.message,
                 line    : ex.line,
@@ -25,6 +28,13 @@ try {
         process.exit(0);
     }
 }
+
+// ast.walk(new U2.TreeWalker(function(node){
+//     console.log(node.TYPE);
+//     if (!node.start) {
+//         console.log(node);
+//     }
+// }));
 
 var best_node = null;
 var path = [];
@@ -157,7 +167,7 @@ if (result) {
     result.search = search.map(make_pos);
 }
 
-SYS.puts(JSON.stringify(result));
+print(JSON.stringify(result));
 
 // FS.writeFileSync("/tmp/jsinfo.json", SEARCH + "\n\n" + JSON.stringify(result, null, 2), "utf8");
 
